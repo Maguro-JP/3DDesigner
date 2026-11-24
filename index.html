@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>3DDesigner | 輪郭からメッシュ</title>
+<style>
+:root{font:16px/1.5 system-ui,sans-serif;color:#17212b;background:#eff3f7}*{box-sizing:border-box}
+body{margin:0}header{background:#132c45;color:#fff;padding:18px 24px}h1{font-size:1.4rem;margin:0}
+main{max-width:1100px;margin:auto;padding:20px;display:grid;grid-template-columns:minmax(260px,340px) 1fr;gap:18px}
+section{background:white;border-radius:12px;padding:18px;box-shadow:0 2px 12px #10263b12}
+label{display:block;margin:12px 0 5px}input,button{font:inherit}input[type=file],input[type=number]{width:100%;padding:8px;border:1px solid #bbc8d4;border-radius:6px}
+button{border:0;border-radius:7px;padding:10px 14px;background:#166a9b;color:#fff;cursor:pointer;margin:5px 4px 5px 0}
+button:disabled{opacity:.5;cursor:wait}canvas{display:block;width:100%;height:auto;border:1px solid #ccd5de;background:#fff}
+#status{min-height:2.5em}.warning{border-left:4px solid #e3a51a;padding-left:10px}small{color:#536271}
+@media(max-width:760px){main{grid-template-columns:1fr}}
+</style></head><body>
+<header><h1>3DDesigner — 形状JSONから3Dメッシュ</h1></header>
+<main><section><h2>輪郭を読み込む</h2>
+<p>FashionDesignerの <code>fashiondesigner.shape.v2</code> JSON（<code>unit</code> と <code>points</code>）を読み込み、三角形メッシュを生成します。</p>
+<label for="file">形状JSON</label><input id="file" type="file" accept=".json,application/json">
+<label for="depth">押し出し厚み（入力単位）</label><input id="depth" type="number" min="0.01" step="any" value="20">
+<button id="glb" disabled>GLBを書き出す</button><button id="obj" disabled>OBJを書き出す</button>
+<p id="status" role="status" aria-live="polite">JSONを選択してください。</p>
+<p class="warning"><strong>現在の範囲:</strong> これは2D輪郭の単純押し出しです。衣服パネルの縫合、人物へのフィット、布形状の推定は未実装です。完成した衣服3Dとしては扱いません。</p>
+<small>閉じた三角形面として出力します。不正な輪郭はエラーにします。</small></section>
+<section><h2>入力形状</h2><canvas id="preview" width="720" height="720"></canvas></section></main>
+<script>
+'use strict';
+const file=document.querySelector('#file'),depth=document.querySelector('#depth'),status=document.querySelector('#status'),canvas=document.querySelector('#preview'),ctx=canvas.getContext('2d');
+let shape=null;function draw(){ctx.fillStyle='#fff';ctx.fillRect(0,0,720,720);if(!shape)return;const p=shape.points,x=p.map(v=>v[0]),y=p.map(v=>v[1]),minx=Math.min(...x),maxx=Math.max(...x),miny=Math.min(...y),maxy=Math.max(...y),s=Math.min(620/Math.max(1,maxx-minx),620/Math.max(1,maxy-miny)),ox=(720-(maxx-minx)*s)/2,oy=(720-(maxy-miny)*s)/2;ctx.beginPath();p.forEach((v,i)=>{const xx=ox+(v[0]-minx)*s,yy=oy+(v[1]-miny)*s;i?ctx.lineTo(xx,yy):ctx.moveTo(xx,yy)});ctx.closePath();ctx.fillStyle='#aed4e8';ctx.fill();ctx.strokeStyle='#176b9a';ctx.lineWidth=3;ctx.stroke()}
+file.addEventListener('change',async()=>{try{const d=JSON.parse(await file.files[0].text());if(!d||!Array.isArray(d.points)||d.points.length<3||d.points.length>2000||!d.points.every(p=>Array.isArray(p)&&p.length===2&&p.every(Number.isFinite)))throw Error('3〜2000点の有限な2D座標が必要です');shape=d;draw();document.querySelector('#glb').disabled=false;document.querySelector('#obj').disabled=false;status.textContent='読み込みました。単位: '+(d.unit||'未指定')}catch(e){shape=null;draw();document.querySelector('#glb').disabled=true;document.querySelector('#obj').disabled=true;status.textContent='JSONを読み込めません: '+e.message}});
+async function exportMesh(fmt){const d=Number(depth.value);if(!Number.isFinite(d)||d<=0){status.textContent='厚みは正の数値にしてください';return}document.querySelectorAll('button').forEach(b=>b.disabled=true);status.textContent='メッシュを生成しています…';try{const r=await fetch('/api/mesh?format='+fmt,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({points:shape.points,depth:d,unit:shape.unit||'input units'})});if(!r.ok){const e=await r.json().catch(()=>({error:'generation failed'}));throw Error(e.error||'generation failed')}const blob=await r.blob(),u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download='outline-mesh.'+fmt;a.click();setTimeout(()=>URL.revokeObjectURL(u),1500);status.textContent=fmt.toUpperCase()+'を書き出しました。3Dソフトで開いて確認してください。'}catch(e){status.textContent='生成失敗: '+e.message}finally{document.querySelector('#glb').disabled=!shape;document.querySelector('#obj').disabled=!shape}}
+document.querySelector('#glb').onclick=()=>exportMesh('glb');document.querySelector('#obj').onclick=()=>exportMesh('obj');
+</script></body></html>
