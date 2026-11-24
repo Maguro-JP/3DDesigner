@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="ja"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>3DDesigner | 4方向シルエットから3D</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#edf2f6;color:#192b3a;font:15px/1.5 system-ui}header{background:#132c45;color:white;padding:18px 24px}main{max-width:1100px;margin:auto;padding:20px}.card{background:#fff;border-radius:12px;padding:18px;margin-bottom:16px}.views{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.view{border:1px solid #d4dde4;border-radius:8px;padding:10px}.view canvas{width:100%;height:auto;background:#f8fafc;border:1px solid #ddd}label{display:block;margin:8px 0}input,button{font:inherit}input[type=file]{width:100%}button{background:#17699a;color:white;border:0;border-radius:7px;padding:10px 14px;margin:8px 0;cursor:pointer}button:disabled{opacity:.5}small{color:#536271}#status{white-space:pre-wrap;min-height:2em}.warning{border-left:4px solid #e3a51a;padding-left:12px}@media(max-width:760px){.views{grid-template-columns:repeat(2,1fr)}}
+</style>
+<header><strong>3DDesigner — 4方向シルエットから3D</strong></header>
+<main>
+<section class="card"><h1>4方向の一致を測って視覚殻を作る</h1><p>正面・背面・左側面・右側面の画像を読み込み、画面端の背景色を除去してシルエットの交差領域を3D化します。全画像を同じ高さ・縮尺・位置で用意してください。背面・右側面は外側から見た向きで読み込みます。</p>
+<div class="views">
+<div class="view"><b>正面</b><input id="front" type="file" accept="image/*"><canvas id="pfront" width="128" height="256"></canvas></div>
+<div class="view"><b>背面</b><input id="back" type="file" accept="image/*"><canvas id="pback" width="128" height="256"></canvas></div>
+<div class="view"><b>左側面</b><input id="left" type="file" accept="image/*"><canvas id="pleft" width="128" height="256"></canvas></div>
+<div class="view"><b>右側面</b><input id="right" type="file" accept="image/*"><canvas id="pright" width="128" height="256"></canvas></div>
+</div>
+<label>背景色の許容差 <span id="tv">45</span><input id="threshold" type="range" min="10" max="120" value="45"></label>
+<button id="build" disabled>4面の一致率を採点してGLB生成</button><div id="status" role="status" aria-live="polite">4方向の画像を選択してください。</div>
+<p class="warning"><b>制約:</b> これは4面のシルエット制約から得られる視覚殻です。隠れた形状・材質・髪や衣服の細部は復元しません。各面100%の一致は、入力4面に矛盾がない場合に限ります。1枚絵だけから残り3面を正確に復元することはできません。</p>
+</section>
+<section class="card"><h2>入力と計測の条件</h2><ul><li>画像は正投影に近い正面・背面・左右側面にそろえる</li><li>4画像の高さ・中心・縮尺をそろえる。入力枠内での自動切り抜きは行わない</li><li>IoUは出力メッシュを各方向へ投影し、入力シルエットと比較して計算</li><li>初期解像度は32×64×32ボクセル。100%未満は方向別に数値表示</li></ul></section>
+</main>
+<script>
+'use strict';
+const names=['front','back','left','right'], masks={};
+const $=id=>document.getElementById(id), W=128,H=256;
+function maskImage(image,threshold){
+ const c=document.createElement('canvas');c.width=W;c.height=H;const g=c.getContext('2d',{willReadFrequently:true});
+ g.fillStyle='#fff';g.fillRect(0,0,W,H);const scale=Math.min(W/image.width,H/image.height),dw=image.width*scale,dh=image.height*scale;g.drawImage(image,(W-dw)/2,(H-dh)/2,dw,dh);
+ const d=g.getImageData(0,0,W,H).data, edge=[];for(let x=0;x<W;x++)edge.push((x),(H-1)*W+x);for(let y=1;y<H-1;y++)edge.push(y*W,y*W+W-1);
+ const channels=[0,0,0];for(const p of edge)for(let k=0;k<3;k++)channels[k]+=d[p*4+k];const bg=channels.map(v=>v/edge.length);
+ const outside=new Uint8Array(W*H),queue=new Int32Array(W*H);let head=0,tail=0;
+ function add(p){if(outside[p])return;const i=p*4,dist=Math.hypot(d[i]-bg[0],d[i+1]-bg[1],d[i+2]-bg[2]);if(dist>threshold)return;outside[p]=1;queue[tail++]=p}
+ for(let x=0;x<W;x++){add(x);add((H-1)*W+x)}for(let y=1;y<H-1;y++){add(y*W);add(y*W+W-1)}
+ while(head<tail){const p=queue[head++],x=p%W,y=(p/W)|0;if(x)add(p-1);if(x<W-1)add(p+1);if(y)add(p-W);if(y<H-1)add(p+W)}
+ const rows=[];for(let y=0;y<H;y++){let row='';for(let x=0;x<W;x++)row+=outside[y*W+x]?'0':'1';rows.push(row)}return rows;
+}
+async function readInput(name){const file=$(name).files[0];if(!file){delete masks[name];return}const url=URL.createObjectURL(file);try{const img=new Image();await new Promise((ok,no)=>{img.onload=ok;img.onerror=no;img.src=url});const rows=maskImage(img,+$('threshold').value);masks[name]=rows;const c=$('p'+name),g=c.getContext('2d'),im=g.createImageData(W,H);for(let y=0;y<H;y++)for(let x=0;x<W;x++){const v=rows[y][x]==='1'?26:246,i=(y*W+x)*4;im.data[i]=v;im.data[i+1]=v;im.data[i+2]=v;im.data[i+3]=255}g.putImageData(im,0,0)}finally{URL.revokeObjectURL(url)}update()}
+function update(){const count=names.filter(n=>masks[n]).length;$('build').disabled=count!==4;$('status').textContent=count===4?'4面を読み込みました。白が抽出対象、黒が背景です。GLB生成で投影IoUを計測します。':`画像選択済み: ${count}/4`}
+function downsample(rows,resolution){const out=[],scale=W/resolution,gh=H/(resolution*2);for(let y=0;y<resolution*2;y++){let row='';for(let x=0;x<resolution;x++){let count=0,total=0;for(let yy=Math.floor(y*gh);yy<Math.floor((y+1)*gh);yy++)for(let xx=Math.floor(x*scale);xx<Math.floor((x+1)*scale);xx++){count+=rows[yy][xx]==='1'?1:0;total++}row+=count*2>=total?'1':'0'}out.push(row)}return out}
+for(const n of names)$(n).addEventListener('change',()=>readInput(n).catch(e=>{$('status').textContent='画像を読めません: '+e.message}));
+function rebuild(){const t=+$('threshold').value;$('tv').textContent=t;for(const n of names)if($(n).files[0])readInput(n)}$('threshold').addEventListener('input',rebuild);
+$('build').onclick=async()=>{const button=$('build'),resolution=32,views=Object.fromEntries(names.map(n=>[n,downsample(masks[n],resolution)]));button.disabled=true;$('status').textContent='4方向の視覚殻を計算しています…';try{const r=await fetch('/api/visual-hull',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({views,resolution})});if(!r.ok){const e=await r.json().catch(()=>({error:'mesh generation failed'}));throw Error(e.error||'mesh generation failed')}const scores=JSON.parse(r.headers.get('X-Silhouette-Scores')),blob=await r.blob(),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='four-view-visual-hull.glb';a.click();setTimeout(()=>URL.revokeObjectURL(url),1500);const lines=names.map(n=>`${n}: ${(scores[n]*100).toFixed(2)}%`);$('status').textContent='GLBを出力しました。4面シルエットIoU:\n'+lines.join('\n')+'\n'+(Object.values(scores).every(v=>v===1)?'全方向100%一致':'100%未達です。入力画像の投影・縮尺を確認してください')}catch(e){$('status').textContent='生成失敗: '+e.message}finally{button.disabled=false}};
+</script></html>
