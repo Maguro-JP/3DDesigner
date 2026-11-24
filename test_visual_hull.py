@@ -26,6 +26,8 @@ class VisualHullTests(unittest.TestCase):
         doc = json.loads(result["glb"][20:20 + json_size])
         self.assertEqual(doc["asset"]["version"], "2.0")
         self.assertEqual(doc["meshes"][0]["primitives"][0]["mode"], 4)
+        position_accessor = doc["accessors"][0]
+        self.assertAlmostEqual(position_accessor["max"][1] - position_accessor["min"][1], 1.5)
 
     def test_inconsistent_views_report_less_than_100_percent(self):
         front = box_view()

@@ -124,7 +124,8 @@ def build_visual_hull(views, resolution=32):
                         continue
                     base = len(vertices)
                     # X/Z span [-0.5,0.5]; Y maps image top-down to world up.
+                    # Divide Y by grid width so the input 2:1 image aspect is kept.
                     for vx, vy, vz in corners(x, h - y - 1, z):
-                        vertices.append((vx / resolution - 0.5, vy / h, vz / resolution - 0.5))
+                        vertices.append((vx / resolution - 0.5, vy / resolution, vz / resolution - 0.5))
                     indices.extend((base, base+1, base+2, base, base+2, base+3))
     return {"glb": _glb(vertices, indices), "scores": scores, "occupied_voxels": sum(occ)}
