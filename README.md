@@ -42,3 +42,13 @@ python -m unittest -v test_visual_hull.py
 凹形状の三角化と面積、閉メッシュ、外向き体積、OBJ面、GLB header/chunk、無効輪郭を検証します。Blender等での見た目と人物への着装は別途確認が必要です。
 
 4面テストでは整合した4投影のIoUが各100%になること、矛盾入力では100%未満になること、GLB header/chunkが有効なことを確認します。
+
+## AtelIer の拡張として使う
+
+AtelIer の拡張としても使えます。PowerShell で次を実行すると、拡張の置き場（`C:\ProgramData\AtelIer\extensions\3DDesigner\`）へ入ります。
+
+```powershell
+.\atelier_extension\install.ps1
+```
+
+AtelIer を起動すると「3Dデザイン」のメニューが出て、輪郭の形（長方形・円・三角形・L字）と幅・高さ・厚みを選ぶダイアログで、押し出しメッシュの投影プレビューを見ながら OBJ / GLB で保存できます。生成は `mesh_core.py` をそのまま使います（視覚殻は拡張には含みません）。
